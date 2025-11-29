@@ -3,17 +3,16 @@ name: Build & Push to ECR
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "v*.*.*"      # ONLY runs when you push tags like v1.0.1
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-southeast-1
+  AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
-  SERVICE_NAME: service-a   # CHANGE THIS ONLY
+  SERVICE_NAME: service-a   # 🔁 change to service-b / service-c in other repos
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   build-and-push:
@@ -26,27 +25,27 @@ jobs:
           fetch-depth: 0
 
       #####################################################
-      # Auto-detect which branch the tag comes from
+      # Detect Environment From Branch (dev / uat / prod)
       #####################################################
       - name: Detect Environment From Branch
-        id: detect-env
         run: |
           BRANCH=$(git branch -r --contains $GITHUB_SHA | head -n 1 | sed 's/origin\///')
-
           echo "Detected branch: $BRANCH"
 
           if [[ "$BRANCH" == "dev" ]]; then
-            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+            ENVIRONMENT="dev"
           elif [[ "$BRANCH" == "uat" ]]; then
-            echo "ENVIRONMENT=uat" >> $GITHUB_ENV
+            ENVIRONMENT="uat"
           elif [[ "$BRANCH" == "prod" ]]; then
-            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+            ENVIRONMENT="prod"
           else
-            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+            ENVIRONMENT="dev" # default if cannot detect
           fi
 
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+
       #####################################################
-      # Extract Version From Tag
+      # Extract Version From Tag & Sanitize
       #####################################################
       - name: Extract & Sanitize Version
         run: |
@@ -58,27 +57,30 @@ jobs:
           SAFE="${SAFE,,}"
 
           echo "VERSION=$SAFE" >> $GITHUB_ENV
+          echo "Version: $SAFE"
 
       #####################################################
-      # Configure AWS Credentials
+      # Configure AWS Credentials (using Secrets)
       #####################################################
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::570430250751:role/github-oidc-service-a-role
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
+      - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
       #####################################################
-      # Build Docker
+      # Build Docker Image
       #####################################################
       - name: Build Docker Image
-        run: docker build -t $SERVICE_NAME .
+        run: |
+          docker build -t $SERVICE_NAME .
 
       #####################################################
-      # Tag Docker (version, env-version, sha)
+      # Tag Docker Image (env + version + sha)
       #####################################################
       - name: Tag Docker Image
         run: |
@@ -86,24 +88,25 @@ jobs:
           VERSION=${{ env.VERSION }}
           ENVIRONMENT=${{ env.ENVIRONMENT }}
 
+          echo "Using ENVIRONMENT=$ENVIRONMENT, VERSION=$VERSION, SHA=$SHA"
+
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:latest
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$VERSION
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$SHA
 
       #####################################################
-      # Push Images
+      # Push Images to ECR
       #####################################################
       - name: Push Images to ECR
         run: |
-          SHA=${{ github.sha }}
           VERSION=${{ env.VERSION }}
           ENVIRONMENT=${{ env.ENVIRONMENT }}
 
           docker push $ECR_REGISTRY/$SERVICE_NAME:latest
           docker push $ECR_REGISTRY/$SERVICE_NAME:$VERSION
           docker push $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
-          docker push $ECR_REGISTRY/$SERVICE_NAME:$SHA
+          docker push $ECR_REGISTRY/$SERVICE_NAME:${{ github.sha }}
 
       - name: Complete
-        run: echo "✔ Build & Push completed successfully!"
+        run: echo "✅ Build & Push completed successfully!"
