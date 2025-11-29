@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.eggs/
+dist/
+build/
+pip-wheel-metadata/
+
+# Virtual env
+.env
+.venv
+venv/
+ENV/
+env/
+*.env
+
+# PyCharm / VSCode
+.idea/
+.vscode/
+
+# Logs
+*.log
+logs/
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar
+docker-compose.override.yml
+
+# Tests / coverage
+.coverage
+htmlcov/
+.cache/
+.pytest_cache/
+
+# Local configs
+.env.local
+.env.dev
+.env.prod
+
+# GitHub artifacts
+.github/workflows/*.secret

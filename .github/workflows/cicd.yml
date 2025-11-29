@@ -1,0 +1,64 @@
+name: Build & Push to ECR
+
+on:
+  push:
+    tags:
+      - "v*.*.*"   
+    branches:
+      - "main"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
+  SERVICE_NAME: <SERVICE-NAME>
+  ENVIRONMENT: <ENVIRONMENT>   
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Extract version from tag or fallback to package file
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="v0.0.0"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::570430250751:role/github-oidc-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build image
+        run: docker build -t $SERVICE_NAME .
+
+      - name: Tag image
+        run: |
+          SHA=${{ github.sha }}
+
+          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:latest
+          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${VERSION}
+          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
+          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${SHA}
+
+      - name: Push image
+        run: |
+          docker push $ECR_REGISTRY/$SERVICE_NAME:latest
+          docker push $ECR_REGISTRY/$SERVICE_NAME:${VERSION}
+          docker push $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
+          docker push $ECR_REGISTRY/$SERVICE_NAME:${SHA}
