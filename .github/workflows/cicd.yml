@@ -97,7 +97,6 @@ jobs:
           VERSION=${{ env.VERSION }}
           ENVIRONMENT=${{ env.ENVIRONMENT }}
 
-          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:latest
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$VERSION
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$SHA
@@ -110,7 +109,6 @@ jobs:
           VERSION=${{ env.VERSION }}
           ENVIRONMENT=${{ env.ENVIRONMENT }}
 
-          docker push $ECR_REGISTRY/$SERVICE_NAME:latest
           docker push $ECR_REGISTRY/$SERVICE_NAME:$VERSION
           docker push $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
           docker push $ECR_REGISTRY/$SERVICE_NAME:${{ github.sha }}
