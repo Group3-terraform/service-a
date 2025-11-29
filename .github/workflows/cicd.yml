@@ -2,17 +2,16 @@ name: Build & Push to ECR
 
 on:
   push:
+    branches: ["main"]
     tags:
-      - "v*.*.*"   
-    branches:
-      - "main"
+      - "v*.*.*"      # Semantic versioning
   workflow_dispatch:
 
 env:
   AWS_REGION: ap-southeast-1
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
   SERVICE_NAME: <SERVICE-NAME>
-  ENVIRONMENT: <ENVIRONMENT>   
+  ENVIRONMENT: <ENVIRONMENT>   # dev / uat / prod
 
 permissions:
   contents: read
@@ -23,19 +22,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Extract version from tag or fallback to package file
+      #####################################################
+      # Extract Version Tag + Sanitize (IMPORTANT)
+      #####################################################
+      - name: Extract & Sanitize Version
+        id: version
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
+            RAW="${GITHUB_REF#refs/tags/}"
           else
-            VERSION="v0.0.0"
+            RAW="v0.0.0"
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Configure AWS credentials
+          # Remove invalid characters for Docker
+          SAFE="${RAW//\//-}"
+          SAFE="${SAFE//+/-}"
+          SAFE="${SAFE// /-}"
+          SAFE="${SAFE,,}"  # lowercase
+
+          echo "VERSION=$SAFE" >> $GITHUB_ENV
+
+      #####################################################
+      # Configure AWS Credentials (OIDC)
+      #####################################################
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::570430250751:role/github-oidc-role
@@ -44,21 +57,41 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build image
-        run: docker build -t $SERVICE_NAME .
+      #####################################################
+      # Build Docker Image
+      #####################################################
+      - name: Build Docker Image
+        run: |
+          docker build -t $SERVICE_NAME .
 
-      - name: Tag image
+      #####################################################
+      # Tag Docker Image Safely
+      #####################################################
+      - name: Tag Docker Image
         run: |
           SHA=${{ github.sha }}
+          VERSION=${{ env.VERSION }}
 
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:latest
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${VERSION}
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
           docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${SHA}
 
-      - name: Push image
+      #####################################################
+      # Push Images to ECR
+      #####################################################
+      - name: Push Images to ECR
         run: |
+          SHA=${{ github.sha }}
+          VERSION=${{ env.VERSION }}
+
           docker push $ECR_REGISTRY/$SERVICE_NAME:latest
           docker push $ECR_REGISTRY/$SERVICE_NAME:${VERSION}
           docker push $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
           docker push $ECR_REGISTRY/$SERVICE_NAME:${SHA}
+
+      #####################################################
+      # Optional: Trigger EKS Deployment or Terraform
+      #####################################################
+      - name: Complete
+        run: echo "Build & Push completed successfully!"
