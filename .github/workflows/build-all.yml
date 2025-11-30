@@ -1,0 +1,39 @@
+name: Build All Services
+
+on:
+  push:
+    tags:
+      - "build-all-v*.*.*"
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [service-a, service-b, service-c]
+
+    steps:
+      - name: Extract Version
+        run: |
+          RAW="${GITHUB_REF#refs/tags/build-all-}"
+          echo "VERSION=$RAW" >> $GITHUB_ENV
+
+      - name: Checkout service repo
+        uses: actions/checkout@v3
+        with:
+          repository: sam.vutheareak/${{ matrix.service }}
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Build & Push Image
+        run: |
+          VERSION=${{ env.VERSION }}
+          cd ${{ matrix.service }}
+
+          docker build -t ${{ matrix.service }} .
+          docker tag ${{ matrix.service }}:latest $ECR_REGISTRY/${{ matrix.service }}:$VERSION
+          docker push $ECR_REGISTRY/${{ matrix.service }}:$VERSION
