@@ -3,7 +3,7 @@ name: Build All Microservices
 on:
   push:
     tags:
-      - "build-all-v*.*.*"   # Trigger only for build-all tags
+      - "build-all-v*.*.*"   # e.g. build-all-v1.0.5
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -16,25 +16,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Build three services in parallel
     strategy:
       matrix:
         service: [service-a, service-b, service-c]
 
     steps:
+      # This checks out the repo that *contains* this workflow (infra/service-a/etc.)
+      - name: Checkout workflow repo
+        uses: actions/checkout@v3
+
       - name: Extract Version From Tag
-        id: version
         run: |
-          RAW="${GITHUB_REF#refs/tags/build-all-}"   # remove 'build-all-'
+          RAW="${GITHUB_REF#refs/tags/build-all-}"
           echo "VERSION=$RAW" >> $GITHUB_ENV
           echo "📌 Version detected: $RAW"
 
       - name: Checkout microservice repo
         uses: actions/checkout@v3
         with:
-          repository: sam.vutheareak/${{ matrix.service }}
-          token: ${{ secrets.GH_PAT }}      # REQUIRED for private repos
-          fetch-depth: 0
+          # ✅ Use your ORG as owner
+          repository: Group3-terraform/${{ matrix.service }}
+          token: ${{ secrets.GH_PAT }}      # PAT with repo + workflow scopes
+          # ✅ Put each repo in its own subfolder to avoid deletion conflicts
+          path: repos/${{ matrix.service }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -55,17 +59,17 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          echo "🔧 Building ${{ matrix.service }}"
-          docker build -t ${{ matrix.service }} .
+          SVC=${{ matrix.service }}
+          echo "🔧 Building $SVC"
+          cd repos/$SVC
+          docker build -t $SVC .
 
       - name: Tag Docker Image
         run: |
           VERSION=${{ env.VERSION }}
           SVC=${{ matrix.service }}
 
-          echo "🏷 Tagging images:"
-          echo " - $SVC:$VERSION"
-
+          echo "🏷 Tagging image $SVC:$VERSION"
           docker tag $SVC:latest $ECR_REGISTRY/$SVC:$VERSION
 
       - name: Push Docker Image
@@ -73,9 +77,8 @@ jobs:
           VERSION=${{ env.VERSION }}
           SVC=${{ matrix.service }}
 
-          echo "🚀 Pushing images..."
+          echo "🚀 Pushing $SVC:$VERSION"
           docker push $ECR_REGISTRY/$SVC:$VERSION
 
       - name: Done
-        run: |
-          echo "🎉 Completed building and pushing ${{ matrix.service }}!"
+        run: echo "🎉 Finished building and pushing ${{ matrix.service }}"
