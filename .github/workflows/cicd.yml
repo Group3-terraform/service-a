@@ -25,34 +25,41 @@ jobs:
           fetch-depth: 0
 
       # ---------------------------------------------------------
-      # Detect dev / uat / prod based on branch where tag created
+      # Detect environment from the branch that contains the tag
       # ---------------------------------------------------------
       - name: Detect Environment From Branch
         run: |
-          BRANCH=$(git branch -r --contains $GITHUB_SHA | head -n 1 | sed 's/origin\///')
-          echo "Branch='$BRANCH'"
+          echo "Detecting branch for commit: $GITHUB_SHA"
 
-          if [[ "$BRANCH" == "dev" ]]; then
+          RAW=$(git branch -r --contains $GITHUB_SHA | head -n 1)
+          CLEAN=$(echo "$RAW" | sed 's/origin\///' | xargs)
+
+          echo "Raw = '$RAW'"
+          echo "Cleaned = '$CLEAN'"
+
+          if [[ "$CLEAN" == "dev" ]]; then
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
-          elif [[ "$BRANCH" == "uat" ]]; then
+          elif [[ "$CLEAN" == "uat" ]]; then
             echo "ENVIRONMENT=uat" >> $GITHUB_ENV
-          elif [[ "$BRANCH" == "prod" ]]; then
+          elif [[ "$CLEAN" == "main" ]]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
+
       # ---------------------------------------------------------
-      # Extract version from tag (v1.0.6 → v1.0.6)
+      # Extract version tag (v1.0.3 → v1.0.3)
       # ---------------------------------------------------------
       - name: Extract Version Tag
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
-          CLEAN="${RAW,,}"
+          CLEAN="${RAW,,}"   # lowercase
           echo "VERSION=$CLEAN" >> $GITHUB_ENV
+          echo "Version detected: $CLEAN"
 
       # ---------------------------------------------------------
-      # Configure AWS Credentials
+      # Configure AWS
       # ---------------------------------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -61,51 +68,38 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ---------------------------------------------------------
-      # Auto-create repository
-      # ---------------------------------------------------------
       - name: Ensure ECR Repository Exists
         run: |
-          aws ecr describe-repositories --repository-names "$SERVICE_NAME" || \
-          aws ecr create-repository --repository-name "$SERVICE_NAME" --region $AWS_REGION
+          aws ecr describe-repositories --repository-names "$SERVICE_NAME" \
+            || aws ecr create-repository --repository-name "$SERVICE_NAME"
 
       # ---------------------------------------------------------
       # Docker Login
       # ---------------------------------------------------------
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
-        with:
-          mask-password: 'true'
 
       # ---------------------------------------------------------
-      # Build Image
+      # Build Docker Image
       # ---------------------------------------------------------
       - name: Build Docker Image
         run: docker build -t $SERVICE_NAME .
 
       # ---------------------------------------------------------
-      # Tag ONLY env-version (dev-v1.0.6)
+      # Tag & Push Image (example: uat-v1.0.3)
       # ---------------------------------------------------------
       - name: Tag Docker Image
         run: |
-          VERSION=${{ env.VERSION }}
-          ENVIRONMENT=${{ env.ENVIRONMENT }}
-          
           FINAL_TAG="${ENVIRONMENT}-${VERSION}"
+          echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
+          echo "Tagging image as: $FINAL_TAG"
 
-          echo "Pushing image tag: $FINAL_TAG"
+          docker tag $SERVICE_NAME:latest \
+            $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
-          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
-
-      # ---------------------------------------------------------
-      # Push ONLY that tag
-      # ---------------------------------------------------------
       - name: Push Image to ECR
         run: |
-          VERSION=${{ env.VERSION }}
-          ENVIRONMENT=${{ env.ENVIRONMENT }}
-          FINAL_TAG="${ENVIRONMENT}-${VERSION}"
-
+          echo "Pushing image: $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG"
           docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
       - name: Done
