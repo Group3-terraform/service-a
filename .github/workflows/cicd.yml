@@ -3,13 +3,13 @@ name: Build & Push to ECR
 on:
   push:
     tags:
-      - "v*.*.*"     # Only run when pushing version tags like v1.0.3
+      - "v*.*.*"
   workflow_dispatch:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
-  SERVICE_NAME: service-a   # Change for each microservice
+  SERVICE_NAME: service-a
 
 permissions:
   contents: read
@@ -24,14 +24,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      ###########################################################
-      # Detect ENV (dev/uat/prod) from branch where tag was created
-      ###########################################################
+      # ---------------------------------------------------------
+      # Detect dev / uat / prod based on branch where tag created
+      # ---------------------------------------------------------
       - name: Detect Environment From Branch
         run: |
           BRANCH=$(git branch -r --contains $GITHUB_SHA | head -n 1 | sed 's/origin\///')
-
-          echo "Branch detected = $BRANCH"
+          echo "Branch='$BRANCH'"
 
           if [[ "$BRANCH" == "dev" ]]; then
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
@@ -40,25 +39,21 @@ jobs:
           elif [[ "$BRANCH" == "prod" ]]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
           else
-            echo "ENVIRONMENT=dev" >> $GITHUB_ENV   # fallback
+            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
-      ###########################################################
-      # Extract VERSION from tag
-      ###########################################################
-      - name: Extract Version
+      # ---------------------------------------------------------
+      # Extract version from tag (v1.0.6 → v1.0.6)
+      # ---------------------------------------------------------
+      - name: Extract Version Tag
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
-          CLEAN="${RAW,,}"                 # lowercase
-          CLEAN="${CLEAN//\//-}"           # replace slash
-          CLEAN="${CLEAN//+/-}"            # replace plus
-          CLEAN="${CLEAN// /-}"            # replace spaces
-
+          CLEAN="${RAW,,}"
           echo "VERSION=$CLEAN" >> $GITHUB_ENV
 
-      ###########################################################
-      # AWS Credentials (Using Secrets)
-      ###########################################################
+      # ---------------------------------------------------------
+      # Configure AWS Credentials
+      # ---------------------------------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -66,53 +61,52 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      ###########################################################
+      # ---------------------------------------------------------
       # Auto-create repository
-      ###########################################################
+      # ---------------------------------------------------------
       - name: Ensure ECR Repository Exists
         run: |
           aws ecr describe-repositories --repository-names "$SERVICE_NAME" || \
           aws ecr create-repository --repository-name "$SERVICE_NAME" --region $AWS_REGION
 
-      ###########################################################
-      # Login to ECR
-      ###########################################################
+      # ---------------------------------------------------------
+      # Docker Login
+      # ---------------------------------------------------------
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
         with:
           mask-password: 'true'
 
-      ###########################################################
+      # ---------------------------------------------------------
       # Build Image
-      ###########################################################
+      # ---------------------------------------------------------
       - name: Build Docker Image
         run: docker build -t $SERVICE_NAME .
 
-      ###########################################################
-      # Tag ONLY version + environment-version
-      ###########################################################
+      # ---------------------------------------------------------
+      # Tag ONLY env-version (dev-v1.0.6)
+      # ---------------------------------------------------------
       - name: Tag Docker Image
         run: |
           VERSION=${{ env.VERSION }}
           ENVIRONMENT=${{ env.ENVIRONMENT }}
+          
+          FINAL_TAG="${ENVIRONMENT}-${VERSION}"
 
-          echo "Tagging:"
-          echo " - $VERSION"
-          echo " - $ENVIRONMENT-$VERSION"
+          echo "Pushing image tag: $FINAL_TAG"
 
-          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$VERSION
-          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
+          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
-      ###########################################################
-      # Push ONLY these 2 images
-      ###########################################################
-      - name: Push Images
+      # ---------------------------------------------------------
+      # Push ONLY that tag
+      # ---------------------------------------------------------
+      - name: Push Image to ECR
         run: |
           VERSION=${{ env.VERSION }}
           ENVIRONMENT=${{ env.ENVIRONMENT }}
+          FINAL_TAG="${ENVIRONMENT}-${VERSION}"
 
-          docker push $ECR_REGISTRY/$SERVICE_NAME:$VERSION
-          docker push $ECR_REGISTRY/$SERVICE_NAME:${ENVIRONMENT}-${VERSION}
+          docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
       - name: Done
-        run: echo "🚀 Build & Push completed successfully!"
+        run: echo "🚀 Successfully pushed $SERVICE_NAME:$FINAL_TAG"
