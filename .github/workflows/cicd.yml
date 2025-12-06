@@ -64,9 +64,8 @@ jobs:
 
       # BUILD DOCKER ONLY INSIDE service-a folder
       - name: Build Docker Image
-        working-directory: ${{ env.SERVICE_PATH }}
-        run: |
-          docker build -t $SERVICE_NAME .
+        working-directory: ./service-a
+        run: docker build -t $SERVICE_NAME .
 
       # Tag and Push
       - name: Tag & Push Image
