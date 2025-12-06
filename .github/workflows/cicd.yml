@@ -1,51 +1,62 @@
-name: Build & Deploy Service-A
+name: Build & Push to ECR - Service A
 
 on:
   push:
     tags:
-      - "dev-v*.*.*"
-      - "uat-v*.*.*"
-      - "prod-v*.*.*"
+      - "v*.*.*"
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-southeast-1
+  AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
   SERVICE_NAME: service-a
-  SERVICE_PATH: service-a
+  SERVICE_PATH: service-a  # folder name
 
 permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
+      # ---------------------------------------------------------
+      # Checkout Repository
+      # ---------------------------------------------------------
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # Extract environment from tag
-      - name: Extract Environment
+      # ---------------------------------------------------------
+      # Detect Environment From Branch
+      # ---------------------------------------------------------
+      - name: Detect Environment From Branch
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          echo "Full Tag: $TAG"
+          echo "Detecting branch for commit: $GITHUB_SHA"
+          RAW=$(git branch -r --contains $GITHUB_SHA | head -n 1)
+          CLEAN=$(echo "$RAW" | sed 's/origin\///' | xargs)
 
-          if [[ "$TAG" == dev-* ]]; then
+          if [[ "$CLEAN" == "dev" ]]; then
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
-          elif [[ "$TAG" == uat-* ]]; then
+          elif [[ "$CLEAN" == "uat" ]]; then
             echo "ENVIRONMENT=uat" >> $GITHUB_ENV
-          elif [[ "$TAG" == prod-* ]]; then
+          elif [[ "$CLEAN" == "main" ]]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
           else
-            echo "Unknown tag format!"
-            exit 1
+            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
-          VERSION=${TAG#*-}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      # ---------------------------------------------------------
+      # Extract Version From Tag (v1.0.9 → v1.0.9)
+      # ---------------------------------------------------------
+      - name: Extract Version Tag
+        run: |
+          RAW="${GITHUB_REF#refs/tags/}"
+          CLEAN="${RAW,,}"
+          echo "VERSION=$CLEAN" >> $GITHUB_ENV
 
-      # AWS Credentials
+      # ---------------------------------------------------------
+      # Configure AWS
+      # ---------------------------------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -53,40 +64,39 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Create repo if does not exist
-      - name: Ensure ECR Repository Exists
+      - name: Ensure ECR Repo Exists
         run: |
           aws ecr describe-repositories --repository-names "$SERVICE_NAME" \
             || aws ecr create-repository --repository-name "$SERVICE_NAME"
 
+      # ---------------------------------------------------------
+      # Docker Login
+      # ---------------------------------------------------------
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      # BUILD DOCKER ONLY INSIDE service-a folder
+      # ---------------------------------------------------------
+      # Build Docker Image (FIXED WORKING DIRECTORY)
+      # ---------------------------------------------------------
       - name: Build Docker Image
-        working-directory: ./service-a
-        run: docker build -t $SERVICE_NAME .
+        run: |
+          echo "Building inside: ${{ github.workspace }}/$SERVICE_PATH"
+          cd ${{ github.workspace }}/$SERVICE_PATH
+          docker build -t $SERVICE_NAME .
 
-      # Tag and Push
-      - name: Tag & Push Image
+      # ---------------------------------------------------------
+      # Tag & Push Image
+      # ---------------------------------------------------------
+      - name: Tag Docker Image
         run: |
           FINAL_TAG="${ENVIRONMENT}-${VERSION}"
+          echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
           docker tag $SERVICE_NAME:latest \
             $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
-          
+
+      - name: Push Docker Image
+        run: |
           docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
-          echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
-
-      # --- Deploy to Kubernetes ---
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig --region ap-southeast-1 --name group3-${ENVIRONMENT}-eks
-
-      - name: Deploy to EKS
-        run: |
-          kubectl set image deployment/${SERVICE_NAME} \
-            ${SERVICE_NAME}=$ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG \
-            -n apps
-
-          kubectl rollout status deployment/${SERVICE_NAME} -n apps
+      - name: Done
+        run: echo "🚀 Successfully pushed $SERVICE_NAME:$FINAL_TAG"
