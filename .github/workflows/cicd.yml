@@ -1,4 +1,4 @@
-name: Build & Push to ECR - Service A
+name: Build & Push to ECR
 
 on:
   push:
@@ -9,8 +9,10 @@ on:
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
+
+  # 👇 CHANGE these depending on repo
   SERVICE_NAME: service-a
-  SERVICE_PATH: service-a  # folder name
+  SERVICE_FOLDER: service-a
 
 permissions:
   contents: read
@@ -20,20 +22,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ---------------------------------------------------------
-      # Checkout Repository
-      # ---------------------------------------------------------
       - name: Checkout Code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      # ---------------------------------------------------------
-      # Detect Environment From Branch
-      # ---------------------------------------------------------
+      # ----------------------------------------
+      # Detect ENV from branch containing the tag
+      # ----------------------------------------
       - name: Detect Environment From Branch
         run: |
           echo "Detecting branch for commit: $GITHUB_SHA"
+
           RAW=$(git branch -r --contains $GITHUB_SHA | head -n 1)
           CLEAN=$(echo "$RAW" | sed 's/origin\///' | xargs)
+
+          echo "Raw branch = '$RAW'"
+          echo "Cleaned branch = '$CLEAN'"
 
           if [[ "$CLEAN" == "dev" ]]; then
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
@@ -45,18 +50,19 @@ jobs:
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
-      # ---------------------------------------------------------
-      # Extract Version From Tag (v1.0.9 → v1.0.9)
-      # ---------------------------------------------------------
+      # ----------------------------------------
+      # Extract tag version (v1.0.0)
+      # ----------------------------------------
       - name: Extract Version Tag
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
           CLEAN="${RAW,,}"
           echo "VERSION=$CLEAN" >> $GITHUB_ENV
+          echo "Detected version: $CLEAN"
 
-      # ---------------------------------------------------------
+      # ----------------------------------------
       # Configure AWS
-      # ---------------------------------------------------------
+      # ----------------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -64,39 +70,51 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure ECR Repo Exists
+      # ----------------------------------------
+      # Ensure ECR Repo exists
+      # ----------------------------------------
+      - name: Ensure ECR Repository Exists
         run: |
           aws ecr describe-repositories --repository-names "$SERVICE_NAME" \
             || aws ecr create-repository --repository-name "$SERVICE_NAME"
 
-      # ---------------------------------------------------------
+      # ----------------------------------------
       # Docker Login
-      # ---------------------------------------------------------
+      # ----------------------------------------
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      # ---------------------------------------------------------
-      # Build Docker Image (FIXED WORKING DIRECTORY)
-      # ---------------------------------------------------------
+      # ----------------------------------------
+      # Build Docker Image (FIXED PATH)
+      # ----------------------------------------
       - name: Build Docker Image
         run: |
-          echo "Building inside: ${{ github.workspace }}/$SERVICE_PATH"
-          cd ${{ github.workspace }}/$SERVICE_PATH
-          docker build -t $SERVICE_NAME .
+          echo "Building Docker image from folder: $SERVICE_FOLDER"
+          docker build -t $SERVICE_NAME $SERVICE_FOLDER
 
-      # ---------------------------------------------------------
-      # Tag & Push Image
-      # ---------------------------------------------------------
+      # ----------------------------------------
+      # Tag Docker Image
+      # ----------------------------------------
       - name: Tag Docker Image
         run: |
           FINAL_TAG="${ENVIRONMENT}-${VERSION}"
           echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
-          docker tag $SERVICE_NAME:latest \
-            $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
-      - name: Push Docker Image
+          echo "Tagging: $SERVICE_NAME:latest → $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG"
+          docker tag $SERVICE_NAME:latest $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
+
+      # ----------------------------------------
+      # Push Image to ECR
+      # ----------------------------------------
+      - name: Push Image to ECR
         run: |
+          echo "Pushing: $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG"
           docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
+      # ----------------------------------------
+      # Finish
+      # ----------------------------------------
       - name: Done
-        run: echo "🚀 Successfully pushed $SERVICE_NAME:$FINAL_TAG"
+        run: |
+          echo "🚀 Successfully pushed image:"
+          echo "$ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG"
