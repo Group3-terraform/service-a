@@ -10,7 +10,7 @@ on:
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
-  SERVICE_NAME: service-a    # ← change only per repo
+  SERVICE_NAME: service-a
 
 permissions:
   contents: read
@@ -20,14 +20,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      #######################################################
+      # CHECKOUT CODE
+      #######################################################
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # ------------------------------
-      # Detect environment from branch
-      # ------------------------------
+      #######################################################
+      # DETECT ENVIRONMENT FROM BRANCH
+      #######################################################
       - name: Detect Environment From Branch
         run: |
           RAW=$(git branch -r --contains $GITHUB_SHA | head -n 1)
@@ -43,17 +46,27 @@ jobs:
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
-      # ------------------------------
-      # Extract version tag
-      # ------------------------------
+      #######################################################
+      # EXTRACT VERSION TAG (clean)
+      # deploy-v1.0.12 → v1.0.12
+      #######################################################
       - name: Extract Version Tag
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          echo "VERSION=${TAG,,}" >> $GITHUB_ENV
+          RAW="${GITHUB_REF#refs/tags/}"
 
-      # ------------------------------
-      # AWS Credentials
-      # ------------------------------
+          # Remove deploy- prefix if exists
+          if [[ "$RAW" == deploy-* ]]; then
+            CLEAN="${RAW#deploy-}"
+          else
+            CLEAN="$RAW"
+          fi
+
+          echo "VERSION=${CLEAN,,}" >> $GITHUB_ENV
+          echo "Final VERSION = ${CLEAN,,}"
+
+      #######################################################
+      # AWS AUTH
+      #######################################################
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -66,29 +79,36 @@ jobs:
           aws ecr describe-repositories --repository-names "$SERVICE_NAME" \
             || aws ecr create-repository --repository-name "$SERVICE_NAME"
 
+      #######################################################
+      # LOGIN TO ECR
+      #######################################################
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      # ------------------------------
-      # Build Docker Image (ROOT PATH)
-      # ------------------------------
+      #######################################################
+      # DOCKER BUILD (ROOT OF REPO)
+      #######################################################
       - name: Build Docker Image
         run: |
           echo "📦 Building Docker image from repo root"
           docker build -t $SERVICE_NAME .
 
-      # ------------------------------
-      # Tag & Push
-      # ------------------------------
+      #######################################################
+      # TAG & PUSH IMAGE
+      #######################################################
       - name: Tag Docker Image
         run: |
           FINAL_TAG="${ENVIRONMENT}-${VERSION}"
           echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
+
+          echo "Tagging image as: $FINAL_TAG"
           docker tag $SERVICE_NAME:latest \
             $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
       - name: Push Image to ECR
-        run: docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
+        run: |
+          echo "Pushing image: $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG"
+          docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
       - name: Done
         run: echo "🚀 Successfully pushed $SERVICE_NAME:$FINAL_TAG"
