@@ -9,7 +9,7 @@ on:
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REGISTRY: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com
-  SERVICE_NAME: service-a
+  SERVICE_NAME: service-a    # ← change only per repo
 
 permissions:
   contents: read
@@ -24,18 +24,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ---------------------------------------------------------
-      # Detect environment from the branch that contains the tag
-      # ---------------------------------------------------------
+      # ------------------------------
+      # Detect environment from branch
+      # ------------------------------
       - name: Detect Environment From Branch
         run: |
-          echo "Detecting branch for commit: $GITHUB_SHA"
-
           RAW=$(git branch -r --contains $GITHUB_SHA | head -n 1)
           CLEAN=$(echo "$RAW" | sed 's/origin\///' | xargs)
-
-          echo "Raw = '$RAW'"
-          echo "Cleaned = '$CLEAN'"
 
           if [[ "$CLEAN" == "dev" ]]; then
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
@@ -47,20 +42,17 @@ jobs:
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
-
-      # ---------------------------------------------------------
-      # Extract version tag (v1.0.3 → v1.0.3)
-      # ---------------------------------------------------------
+      # ------------------------------
+      # Extract version tag
+      # ------------------------------
       - name: Extract Version Tag
         run: |
-          RAW="${GITHUB_REF#refs/tags/}"
-          CLEAN="${RAW,,}"   # lowercase
-          echo "VERSION=$CLEAN" >> $GITHUB_ENV
-          echo "Version detected: $CLEAN"
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "VERSION=${TAG,,}" >> $GITHUB_ENV
 
-      # ---------------------------------------------------------
-      # Configure AWS
-      # ---------------------------------------------------------
+      # ------------------------------
+      # AWS Credentials
+      # ------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -73,34 +65,29 @@ jobs:
           aws ecr describe-repositories --repository-names "$SERVICE_NAME" \
             || aws ecr create-repository --repository-name "$SERVICE_NAME"
 
-      # ---------------------------------------------------------
-      # Docker Login
-      # ---------------------------------------------------------
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      # ---------------------------------------------------------
-      # Build Docker Image
-      # ---------------------------------------------------------
+      # ------------------------------
+      # Build Docker Image (ROOT PATH)
+      # ------------------------------
       - name: Build Docker Image
-        run: docker build -t $SERVICE_NAME .
+        run: |
+          echo "📦 Building Docker image from repo root"
+          docker build -t $SERVICE_NAME .
 
-      # ---------------------------------------------------------
-      # Tag & Push Image (example: uat-v1.0.3)
-      # ---------------------------------------------------------
+      # ------------------------------
+      # Tag & Push
+      # ------------------------------
       - name: Tag Docker Image
         run: |
           FINAL_TAG="${ENVIRONMENT}-${VERSION}"
           echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
-          echo "Tagging image as: $FINAL_TAG"
-
           docker tag $SERVICE_NAME:latest \
             $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
       - name: Push Image to ECR
-        run: |
-          echo "Pushing image: $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG"
-          docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
+        run: docker push $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
       - name: Done
         run: echo "🚀 Successfully pushed $SERVICE_NAME:$FINAL_TAG"

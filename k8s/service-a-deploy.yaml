@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+  namespace: apps
+  labels:
+    app: service-a
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: service-a
+  template:
+    metadata:
+      labels:
+        app: service-a
+    spec:
+      containers:
+      - name: service-a
+        image: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com/service-a:dev-v1.0.11
+        ports:
+        - containerPort: 8000
