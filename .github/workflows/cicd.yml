@@ -20,17 +20,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      #######################################################
-      # CHECKOUT CODE
-      #######################################################
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      #######################################################
-      # DETECT ENVIRONMENT FROM BRANCH
-      #######################################################
       - name: Detect Environment From Branch
         run: |
           RAW=$(git branch -r --contains $GITHUB_SHA | head -n 1)
@@ -46,15 +40,10 @@ jobs:
             echo "ENVIRONMENT=dev" >> $GITHUB_ENV
           fi
 
-      #######################################################
-      # EXTRACT VERSION TAG (clean)
-      # deploy-v1.0.12 → v1.0.12
-      #######################################################
       - name: Extract Version Tag
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
 
-          # Remove deploy- prefix if exists
           if [[ "$RAW" == deploy-* ]]; then
             CLEAN="${RAW#deploy-}"
           else
@@ -64,9 +53,6 @@ jobs:
           echo "VERSION=${CLEAN,,}" >> $GITHUB_ENV
           echo "Final VERSION = ${CLEAN,,}"
 
-      #######################################################
-      # AWS AUTH
-      #######################################################
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -79,29 +65,18 @@ jobs:
           aws ecr describe-repositories --repository-names "$SERVICE_NAME" \
             || aws ecr create-repository --repository-name "$SERVICE_NAME"
 
-      #######################################################
-      # LOGIN TO ECR
-      #######################################################
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      #######################################################
-      # DOCKER BUILD (ROOT OF REPO)
-      #######################################################
       - name: Build Docker Image
         run: |
           echo "📦 Building Docker image from repo root"
           docker build -t $SERVICE_NAME .
 
-      #######################################################
-      # TAG & PUSH IMAGE
-      #######################################################
       - name: Tag Docker Image
         run: |
           FINAL_TAG="${ENVIRONMENT}-${VERSION}"
           echo "FINAL_TAG=$FINAL_TAG" >> $GITHUB_ENV
-
-          echo "Tagging image as: $FINAL_TAG"
           docker tag $SERVICE_NAME:latest \
             $ECR_REGISTRY/$SERVICE_NAME:$FINAL_TAG
 
