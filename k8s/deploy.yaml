@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: service-a
   namespace: apps
-  labels:
-    app: service-a
 spec:
   replicas: 2
   selector:
@@ -18,5 +16,6 @@ spec:
       containers:
       - name: service-a
         image: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com/service-a:dev-v1.0.12
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
