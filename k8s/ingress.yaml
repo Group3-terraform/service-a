@@ -7,8 +7,8 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-southeast-1:570430250751:certificate/e3d665c9-81cb-45fa-a99e-c1348e3810d7
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     alb.ingress.kubernetes.io/load-balancer-name: group3-dev-alb
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
     alb.ingress.kubernetes.io/ssl-redirect: '443'
 spec:
   ingressClassName: alb
@@ -23,7 +23,6 @@ spec:
                 name: service-a
                 port:
                   number: 80
-
           - path: /b
             pathType: Prefix
             backend:
@@ -31,7 +30,6 @@ spec:
                 name: service-b
                 port:
                   number: 80
-
           - path: /c
             pathType: Prefix
             backend:
