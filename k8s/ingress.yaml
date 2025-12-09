@@ -6,21 +6,22 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: alb
 
+    # Load balancer type
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/load-balancer-name: group3-dev-alb
 
-    # HTTPS + HTTP
+    # Listeners: allow HTTP + HTTPS → redirect everything to HTTPS
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
     alb.ingress.kubernetes.io/ssl-redirect: '443'
 
-    # ACM cert (your certificate)
+    # Your ACM certificate
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-southeast-1:570430250751:certificate/e3d665c9-81cb-45fa-a99e-c1348e3810d7
 
-    # HEALTH CHECK (MOST IMPORTANT to fix 503)
-    alb.ingress.kubernetes.io/healthcheck-path: /a
-    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    # HEALTH CHECK — MUST return 200 OK inside your container
+    alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
     alb.ingress.kubernetes.io/success-codes: "200"
 
 spec:
