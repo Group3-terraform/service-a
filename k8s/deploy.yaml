@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: service-a
-        image: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com/service-a:dev-v1.0.13
+        image: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com/service-a:dev-v1.0.15
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
