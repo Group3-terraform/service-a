@@ -14,8 +14,21 @@ spec:
         app: service-a
     spec:
       containers:
-      - name: service-a
-        image: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com/service-a:dev-v1.0.15
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
+        - name: service-a
+          image: 570430250751.dkr.ecr.ap-southeast-1.amazonaws.com/service-a:dev-v1.0.21
+          ports:
+            - containerPort: 8080
+
+          livenessProbe:
+            httpGet:
+              path: /a/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /a/health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
