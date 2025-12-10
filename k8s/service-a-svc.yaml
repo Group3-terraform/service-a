@@ -7,6 +7,7 @@ spec:
   selector:
     app: service-a
   ports:
-    - port: 80
-      targetPort: 8080
+    - name: http
+      port: 8080       # service port
+      targetPort: 8080 # pod port
   type: ClusterIP

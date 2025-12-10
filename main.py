@@ -10,3 +10,7 @@ def root():
 def health():
     return {"status": "ok"}
 
+# so external /a returns 200 as well
+@app.get("/a")
+def service_a():
+    return {"service": "service-a", "path": "/a", "status": "running"}
