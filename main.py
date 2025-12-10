@@ -2,14 +2,18 @@ from fastapi import FastAPI
 
 app = FastAPI()
 
-@app.get("/")
+@app.get("/a")
 def root():
     return {"service": "service-a", "status": "running"}
 
-@app.get("/health")
+@app.get("/a/health")
 def health():
     return {"status": "ok"}
 
-@app.get("/a")
-def service_a():
-    return {"service": "service-a", "path": "/a", "status": "running"}
+@app.get("/a/info")
+def info():
+    return {"service": "service-a", "path": "/a/info", "status": "running"}
+
+@app.get("/a/info")
+def info():
+    return {"service": "service-a", "path": "/a/info", "status": "running", "group": "devops-team-3"}
