@@ -14,6 +14,6 @@ def health():
 def info():
     return {"service": "service-a", "path": "/a/info", "status": "running"}
 
-@app.get("/a/info")
+@app.get("/a/info/g3")
 def info():
     return {"service": "service-a", "path": "/a/info", "status": "running", "group": "devops-team-3"}
