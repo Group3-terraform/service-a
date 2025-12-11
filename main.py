@@ -17,3 +17,7 @@ def info():
 @app.get("/a/info/g3")
 def info():
     return {"service": "service-a", "path": "/a/info", "status": "running", "group": "devops-team-3"}
+
+@app.get("/a/info/g4")
+def info():
+    return {"service": "service-a", "path": "/a/info", "status": "running", "group": "devops-team-4"}
